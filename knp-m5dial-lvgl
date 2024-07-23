@@ -1,0 +1,1434 @@
+esphome:
+  name: "your-name"
+  on_boot:
+    priority: -100
+    then:
+      - script.execute:
+          id: climate_away_button_script
+  
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: ERROR
+
+captive_portal:
+
+#############
+# Resources #
+#############
+color:
+  - id: white
+    hex: FFFFFF
+  - id: red
+    hex: CC0000
+  - id: black
+    hex: "000000"
+  - id: gray
+    hex: "222222"
+  - id: dark_orange
+    hex: "874021"
+  - id: orange
+    hex: FD7031
+  - id: activated_button_color
+    hex: FFC107
+  - id: desactivated_button_color
+    hex: 44739E
+    
+image:
+  - file: mdi:lightbulb-group
+    id: lights_icon
+    resize: 120x120
+  - file: mdi:fire
+    id: climate_fire_icon
+    resize: 40x40
+  - file: mdi:thermometer
+    id: climate_thermometer_icon
+    resize: 20x20
+  - file: mdi:temperature-celsius
+    id: climate_celcius_icon
+    resize: 20x20
+  - file: mdi:snowflake
+    id: climate_away_mode_icon
+    resize: 40x40
+  - file: mdi:sleep
+    id: climate_sleep_mode_icon
+    resize: 40x40
+  - file: mdi:home
+    id: climate_home_mode_icon
+    resize: 40x40
+  - file: mdi:radiator
+    id: climate_comfort_mode_icon
+    resize: 40x40
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_160
+    type: RGB565
+    resize: 160x160
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_162
+    type: RGB565
+    resize: 162x162
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_164
+    type: RGB565
+    resize: 164x164
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_166
+    type: RGB565
+    resize: 166x166
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_168
+    type: RGB565
+    resize: 168x168
+  - file: https://raw.githubusercontent.com/denysdovhan/vacuum-card/v2.10.0/src/vacuum.svg
+    id: vacuum_icon_170
+    type: RGB565
+    resize: 170x170
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_15
+    size: 15
+
+  - file: "gfonts://Roboto"
+    id: roboto_20
+    size: 20
+
+  - file: "gfonts://Roboto"
+    id: roboto_40
+    size: 40
+
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: icon_120
+    size: 120
+    bpp: 4
+    glyphs: 
+      - "\U000F1253" # bulb
+
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: icon_40
+    size: 40
+    bpp: 4
+    glyphs: 
+      - "\U000F0717" # snowflake
+      - "\U000F04B2" # sleep
+      - "\U000F02DC" # home
+      - "\U000F0438" # radiator
+      - "\U000F0238" # fire
+
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: icon_20
+    size: 20
+    bpp: 4
+    glyphs: 
+      - "\U000F050F" # thermometer
+      - "\U000F0504" # celcius
+      - "\U000F0765" # circle
+      - "\U000F058C" # water
+
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: icon_10
+    size: 10
+    bpp: 4
+    glyphs: 
+      - "\U000F043D" # radio uncheck
+      - "\U000F043E" # radio checked
+      
+############
+# Settings #
+############
+external_components:
+  - source: github://clydebarrow/esphome@lvgl
+    refresh: 10min
+    components: [ lvgl ]
+
+spi:
+  mosi_pin: GPIO5
+  clk_pin: GPIO6
+
+i2c:
+  - id: bus_internal
+    sda: GPIO11
+    scl: GPIO12
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer
+    max_power: 0.25
+    min_power: 0
+
+  - id: display_back_lighting_output
+    platform: ledc
+    pin: GPIO09
+    max_power: 1
+    min_power: 0
+
+rtttl:
+  output: buzzer
+
+#############
+# Variables #
+#############
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+    timezone: Europe/Paris
+    on_time: 
+      - seconds: 0
+        minutes: /1
+        then:
+          - script.execute:
+              id: climate_runtime
+      - seconds: /1
+        then:
+          - if:
+              condition:
+                - number.in_range:
+                    id: display_countdown
+                    above: 1
+              then:
+                - number.decrement:
+                    id: display_countdown
+                    cycle: false
+          - if:
+              condition:
+                - number.in_range:
+                    id: climate_force_mode_countdown
+                    above: 1
+              then:
+                - number.decrement:
+                    id: climate_force_mode_countdown
+                    cycle: false
+
+number:
+
+  # Public
+  - platform: template
+    id: display_delay
+    name: Durée rétro-éclairage
+    icon: mdi:wrench-clock
+    optimistic: true
+    min_value: 0
+    max_value: 60
+    step: 5
+    initial_value: 10
+
+  - platform: template
+    id: display_brightness
+    name: Luminosité
+    icon: mdi:brightness-6
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 5
+    initial_value: 50
+
+  - platform: template
+    id: climate_away_temperature
+    name: Température du mode "Absent"
+    icon: mdi:thermometer-low
+    optimistic: true
+    min_value: 10
+    max_value: 22
+    step: 1
+    initial_value: 10
+
+  - platform: template
+    id: climate_sleep_temperature
+    name: Température du mode "Couché"
+    icon: mdi:thermometer
+    optimistic: true
+    min_value: 10
+    max_value: 22
+    step: 1
+    initial_value: 15
+
+  - platform: template
+    id: climate_home_temperature
+    name: Température du mode "Maison"
+    icon: mdi:thermometer
+    optimistic: true
+    min_value: 10
+    max_value: 22
+    step: 1
+    initial_value: 19.5
+
+  - platform: template
+    id: climate_comfort_temperature
+    name: Température du mode "Boost"
+    icon: mdi:thermometer-high
+    optimistic: true
+    min_value: 10
+    max_value: 22
+    step: 1
+    initial_value: 22
+
+  - platform: template
+    id: climate_force_mode_duration
+    name: Durée de la personnalisation de la température
+    icon: mdi:wrench-clock
+    optimistic: true
+    min_value: 30
+    max_value: 120
+    step: 5
+    initial_value: 60
+
+  # Private
+  - platform: template
+    id: display_countdown
+    internal: true
+    optimistic: true
+    min_value: 0
+    max_value: 60
+    step: 1
+    initial_value: 1
+    on_value_range:
+      - above: 1
+        then: 
+          - script.execute:
+              id: display_on_script
+      - below: 0
+        then: 
+          - script.execute:
+              id: display_off_script
+
+  - platform: template
+    id: pi
+    internal: true
+    optimistic: true
+    min_value: 3.14159265359
+    max_value: 3.14159265360
+    step: 0.00000000001
+    initial_value: 3.14159265359
+
+  - platform: template
+    id: climate_force_mode_countdown
+    internal: true
+    optimistic: true
+    min_value: 0
+    max_value: 10000
+    step: 1
+    initial_value: 1
+
+  - platform: template
+    id: lights_dinning_room_arc_value
+    internal: true
+    optimistic: true
+    min_value: 0
+    max_value: 255
+    step: 1
+    initial_value: 1
+    on_value: 
+      then:
+        - script.execute:
+            id: lights_dinning_room_arc_set_value
+        
+  - platform: template
+    id: climate_arc_value
+    internal: true
+    optimistic: true
+    min_value: 20
+    max_value: 44
+    step: 1
+    initial_value: 20
+    on_value: 
+      then:
+        - script.execute:
+            id: climate_arc_set_value
+        - script.execute:
+            id: display_widget_set_values
+
+###########
+# Scripts #
+###########
+script:
+
+  # Common
+  - id: common_bip_script
+    mode: restart
+    then:
+      - output.turn_on: buzzer
+      - output.ledc.set_frequency:
+          id: buzzer
+          frequency: "2000Hz"
+      - output.set_level:
+          id: buzzer
+          level: "10%"
+      - delay: 50ms
+      - output.turn_off: buzzer
+      - delay: 450ms
+  - id: common_rotary_up_script
+    mode: restart
+    then:
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state && (strcmp(id(mode).state.c_str(), "dinning_room_lights") == 0);
+          then:
+            - number.set:
+                id: lights_dinning_room_arc_value
+                value: !lambda |-
+                  return int((id(lights_dinning_room_arc_value).state + 15) / 15) * 15;
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state && (strcmp(id(mode).state.c_str(), "climate") == 0);
+          then:
+            - number.set:
+                id: climate_arc_value
+                value: !lambda |-
+                  return id(climate_arc_value).state + 1;
+            - script.execute:
+                id: climate_force_mode_set_countdown
+  - id: common_rotary_down_script
+    mode: restart
+    then:
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state && (strcmp(id(mode).state.c_str(), "dinning_room_lights") == 0);
+          then:
+            - number.set:
+                id: lights_dinning_room_arc_value
+                value: !lambda |-
+                  return int((id(lights_dinning_room_arc_value).state - 15) / 15) * 15;
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state && (strcmp(id(mode).state.c_str(), "climate") == 0);
+          then:
+            - number.set:
+                id: climate_arc_value
+                value: !lambda |-
+                  return id(climate_arc_value).state - 1;
+            - script.execute:
+                id: climate_force_mode_set_countdown
+
+  # Button
+  - id: button_push_script
+    mode: restart
+    then:
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state;
+          then:
+            - lambda: |-
+                if (strcmp(id(mode).state.c_str(), "dinning_room_lights") == 0) {
+                  id(mode).publish_state("climate");
+                } else if (strcmp(id(mode).state.c_str(), "climate") == 0) {
+                  id(mode).publish_state("vacuum");
+                } else if (strcmp(id(mode).state.c_str(), "vacuum") == 0) {
+                  id(mode).publish_state("dinning_room_lights");
+                } else {
+                  id(mode).publish_state("dinning_room_lights");
+                }
+
+  # Screen
+  - id: display_on_script
+    mode: restart
+    then:    
+      - lvgl.resume:
+      - lambda: |-
+          id(mode).publish_state("dinning_room_lights");
+      - light.turn_on:
+          id: display_back_lighting
+          brightness: !lambda |-
+            return id(display_brightness).state / 100;
+      - sensor.rotary_encoder.set_value:
+          id: display_rotary
+          value: 0
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_target_temperature).state;
+      - delay: 500ms
+      - lambda: |-
+          id(display_on).publish_state(true);
+  - id: display_off_script
+    mode: restart
+    then:
+      - lvgl.pause:
+      - light.turn_off:
+          id: display_back_lighting
+      - lambda: |-
+          id(mode).publish_state("dinning_room_lights");
+      - script.execute:
+          id: climate_apply_new_temperature
+      - lambda: |-
+          id(display_on).publish_state(false);
+  - id: display_set_countdown
+    mode: restart
+    then:
+      - number.set:
+          id: display_countdown
+          value: !lambda |-
+            return id(display_delay).state;
+  - id: display_change_page_script
+    mode: restart
+    then:
+      
+      - if:
+          condition:
+            lambda: return (strcmp(id(mode).state.c_str(), "dinning_room_lights") == 0);
+          then:
+            lvgl.page.show: 
+              id: "dinning_room_lights"
+              animation: MOVE_LEFT
+              time: 500ms
+      - if:
+          condition:
+            lambda: return (strcmp(id(mode).state.c_str(), "climate") == 0);
+          then:
+            lvgl.page.show: 
+              id: "climate"
+              animation: MOVE_LEFT
+              time: 500ms
+      - if:
+          condition:
+            lambda: return (strcmp(id(mode).state.c_str(), "vacuum") == 0);
+          then:
+            lvgl.page.show: 
+              id: "vacuum"
+              animation: MOVE_LEFT
+              time: 500ms
+  - id: display_widget_set_values
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: lights_dinning_room_label
+          text_color: !lambda |-
+            if (isnan(id(lights_dinning_room_brightness).state) || id(lights_dinning_room_brightness).state <= 0) {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            } else if (id(lights_dinning_room_mode).state) {
+              return lv_color_make(id(white).red, id(white).green, id(white).blue);
+            } else {
+              return lv_color_make(id(activated_button_color).red, id(activated_button_color).green, id(activated_button_color).blue);
+            }
+
+      - lvgl.label.update:
+          id: climate_current_temperature_label
+          text: !lambda |-
+            char buf[200];
+            sprintf(buf, "%0.1f", id(climate_current_temperature).state);
+            return ((std::string) buf).c_str();
+
+      - lvgl.label.update:
+          id: climate_target_temperature_label
+          text: !lambda |-
+            char buf[200];
+            sprintf(buf, "%0.1f", id(climate_new_temperature).state);
+            return ((std::string) buf).c_str();
+
+      - lvgl.label.update:
+          id: climate_current_humidity_label
+          text: !lambda |-
+            char buf[200];
+            sprintf(buf, "%0.1f", id(climate_current_humidity).state);
+            return ((std::string) buf).c_str();
+
+      - lvgl.label.update:
+          id: climate_fire_label
+          text_color: !lambda |-
+            if (id(climate_current_temperature).state <= id(climate_target_temperature).state) {
+              return lv_color_make(id(red).red, id(red).green, id(red).blue);
+            } else {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            }
+            
+      - lvgl.arc.update:
+          id: climate_second_arc
+          value: !lambda |-
+            if (id(climate_current_temperature).state < id(climate_new_temperature).state) {
+              return id(climate_current_temperature).state * 10;
+            } else {
+              return id(climate_new_temperature).state * 10;
+            }
+      
+      - lvgl.label.update:
+          id: climate_away_button
+          text_color: !lambda |-
+            if (strcmp(id(climate_mode).state.c_str(), "away") == 0) {
+              return lv_color_make(id(activated_button_color).red, id(activated_button_color).green, id(activated_button_color).blue);
+            } else {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            }
+      
+      - lvgl.label.update:
+          id: climate_sleep_button
+          text_color: !lambda |-
+            if (strcmp(id(climate_mode).state.c_str(), "sleep") == 0) {
+              return lv_color_make(id(activated_button_color).red, id(activated_button_color).green, id(activated_button_color).blue);
+            } else {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            }
+
+      - lvgl.label.update:
+          id: climate_home_button
+          text_color: !lambda |-
+            if (strcmp(id(climate_mode).state.c_str(), "home") == 0) {
+              return lv_color_make(id(activated_button_color).red, id(activated_button_color).green, id(activated_button_color).blue);
+            } else {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            }
+
+      - lvgl.label.update:
+          id: climate_comfort_button
+          text_color: !lambda |-
+            if (strcmp(id(climate_mode).state.c_str(), "comfort") == 0) {
+              return lv_color_make(id(activated_button_color).red, id(activated_button_color).green, id(activated_button_color).blue);
+            } else {
+              return lv_color_make(id(desactivated_button_color).red, id(desactivated_button_color).green, id(desactivated_button_color).blue);
+            }            
+
+  # Lights
+  - id: lights_dinning_room_long_press_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - lambda: |-
+          id(lights_dinning_room_mode).publish_state(!id(lights_dinning_room_mode).state);
+      - lvgl.arc.update:
+          id: lights_dinning_room_arc
+          value: !lambda |-
+            return id(lights_dinning_room_arc_value).state;
+      - homeassistant.service:
+          service: script.turn_on_light
+          data:
+            light_id: light.lumieres_salle_a_manger
+            brightness: !lambda |-
+              return (int) id(lights_dinning_room_arc_value).state;
+            red: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            green: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            blue: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            white: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+  - id: lights_dinning_room_press_button_script
+    mode: restart
+    then:
+      - if:
+          condition:
+            - lambda: |-
+                return id(display_on).state;
+          then:
+            - script.execute:
+                id: common_bip_script
+            - homeassistant.service:
+                service: light.toggle
+                data:
+                  entity_id: light.lumieres_salle_a_manger
+            - script.execute:
+                id: display_widget_set_values
+  - id: lights_dinning_room_arc_set_value
+    mode: restart
+    then:
+      - lvgl.arc.update:
+          id: lights_dinning_room_arc
+          value: !lambda |-
+            return id(lights_dinning_room_arc_value).state;
+      - delay: 1s
+      - homeassistant.service:
+          service: script.turn_on_light
+          data:
+            light_id: light.lumieres_salle_a_manger
+            brightness: !lambda |-
+              return (int) id(lights_dinning_room_arc_value).state;
+            red: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            green: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            blue: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+            white: !lambda |-
+              return (id(lights_dinning_room_mode).state) ? 255 : 0;
+
+  # Climate
+  - id: climate_runtime
+    mode: single
+    then:
+      - if:
+          condition: 
+            - lambda: |-
+                return !id(display_on).state && id(climate_force_mode_countdown).state == 0 && strcmp(id(climate_mode).state.c_str(), "away") != 0;
+          then:
+            - lambda: |- 
+                // Variables          
+                float hours = id(homeassistant_time).now().hour;
+                float minutes = id(homeassistant_time).now().minute;
+                hours = hours + minutes / 60;
+                int day = id(homeassistant_time).now().day_of_week;
+
+                // Change climate mode      
+                if (hours > 6 and hours < 20 and (day == 7 or day == 1 or hours < 8.5 or hours > 15.5)) {
+                  if (strcmp(id(climate_mode).state.c_str(), "home") != 0) {
+                    id(climate_home_button_script).execute();
+                  }
+                } else {
+                  if (strcmp(id(climate_mode).state.c_str(), "sleep") != 0) {
+                    id(climate_sleep_button_script).execute();
+                  }
+                }
+  - id: climate_force_mode_set_countdown
+    mode: single
+    then:
+      - if:
+          condition: 
+            - lambda: |-
+                return id(display_on).state;
+          then:
+            - number.set:
+                id: climate_force_mode_countdown
+                value: !lambda |-
+                  return id(climate_force_mode_duration).state * 60;
+  - id: climate_arc_set_value
+    mode: restart
+    then:
+      - lvgl.arc.update:
+          id: climate_arc
+          value: !lambda |-
+            return id(climate_arc_value).state;
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_arc_value).state / 2;
+      - text_sensor.template.publish:
+          id: climate_mode
+          state: !lambda |-
+            if (id(climate_away_temperature).state >= id(climate_new_temperature).state) {
+              return "away";
+            } else if (id(climate_away_temperature).state < id(climate_new_temperature).state && id(climate_sleep_temperature).state >= id(climate_new_temperature).state) {
+              return "sleep";
+            } else if (id(climate_sleep_temperature).state < id(climate_new_temperature).state && id(climate_home_temperature).state >= id(climate_new_temperature).state) {
+              return "home";
+            } else if (id(climate_home_temperature).state < id(climate_new_temperature).state &&id(climate_comfort_temperature).state >= id(climate_new_temperature).state) {
+              return "comfort";
+            } else {
+              return "away";
+            } 
+  - id: climate_apply_new_temperature
+    mode: restart
+    then:
+      - delay: 500ms
+      - if:
+          condition:
+            - lambda: |-
+                return !id(display_on).state && id(climate_new_temperature).state >= 10;
+          then:
+            - homeassistant.service:
+                service: climate.set_temperature
+                data:
+                  entity_id: climate.thermostat_principal
+                  temperature: !lambda |-
+                    return id(climate_new_temperature).state;
+  - id: climate_away_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - text_sensor.template.publish:
+          id: climate_mode
+          state: away
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_away_temperature).state;
+  - id: climate_sleep_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - text_sensor.template.publish:
+          id: climate_mode
+          state: sleep
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_sleep_temperature).state;
+  - id: climate_home_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - text_sensor.template.publish:
+          id: climate_mode
+          state: home
+      - script.execute:
+          id: climate_force_mode_set_countdown
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_home_temperature).state;
+  - id: climate_comfort_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - text_sensor.template.publish:
+          id: climate_mode
+          state: comfort
+      - script.execute:
+          id: climate_force_mode_set_countdown
+      - sensor.template.publish:
+          id: climate_new_temperature
+          state: !lambda |-
+            return id(climate_comfort_temperature).state;
+
+  # Vacuum
+  - id: vacuum_animate
+    mode: parallel
+    then:
+      - if:
+          condition:
+            lambda: 'return strcmp(id(vacuum_status).state.c_str(), "Cleaning") == 0;'
+          then:
+            - lvgl.animimg.start:
+                id: vacuum_icon_img
+            - delay: 1s
+            - script.execute:
+                id: vacuum_animate
+  - id: vacuum_press_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - if:
+          condition:
+            lambda: 'return strcmp(id(vacuum_status).state.c_str(), "Cleaning") == 0;'
+          then:
+            - homeassistant.service:
+                service: vacuum.stop
+                data:
+                  entity_id: vacuum.plume
+          else:
+            - homeassistant.service:
+                service: vacuum.start
+                data:
+                  entity_id: vacuum.plume
+  - id: vacuum_long_press_button_script
+    mode: restart
+    then:
+      - script.execute:
+          id: common_bip_script
+      - homeassistant.service:
+          service: vacuum.return_to_base
+          data:
+            entity_id: vacuum.plume
+
+############
+## sensor ##
+############
+binary_sensor:
+  - id: lights_switch
+    platform: homeassistant
+    entity_id: light.lumieres_salle_a_manger
+
+  - id: lights_dinning_room_long_press_boolean
+    platform: template
+    internal: true
+
+  - id: lights_dinning_room_mode
+    platform: template
+    internal: true
+    on_state: 
+      - then:
+        - script.execute:
+            id: display_widget_set_values
+
+  - id: display_button
+    platform: gpio
+    pin: GPIO42
+    name: Bouton
+    internal: true
+    filters: 
+      - invert: 
+    on_state: 
+      - then:
+        - script.execute:
+            id: display_set_countdown
+    on_press: 
+      - then:
+        - script.execute:
+            id: button_push_script
+
+  - platform: template
+    id: display_on
+    internal: true
+
+  - id: vacuum_long_press_boolean
+    platform: template
+    internal: true
+
+sensor:
+  - platform: rotary_encoder
+    id: display_rotary
+    internal: true
+    pin_a: 
+      number: GPIO40
+      mode:
+       input: true
+       pullup: true
+    pin_b: 
+      number: GPIO41
+      mode:
+       input: true
+       pullup: true
+    accuracy_decimals: 0
+    on_value: 
+      - then:
+        - script.execute:
+            id: display_set_countdown
+    on_clockwise: 
+      - then:
+        - script.execute:
+            id: common_rotary_up_script
+    on_anticlockwise: 
+      - then:
+        - script.execute:
+            id: common_rotary_down_script
+
+  - platform: homeassistant
+    id: lights_dinning_room_brightness
+    entity_id: light.lumieres_salle_a_manger
+    attribute: brightness
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(lights_dinning_room_brightness).state != id(lights_dinning_room_arc_value).state;'
+            then:
+              number.set: 
+                id: lights_dinning_room_arc_value
+                value: !lambda |-
+                  return (isnan(id(lights_dinning_room_brightness).state) ? 0 : id(lights_dinning_room_brightness).state);
+        - script.execute:
+            id: display_widget_set_values
+        
+  - platform: template
+    id: climate_new_temperature
+    name: Nouvelle temperature
+    on_value:
+      - if:
+          condition:
+            lambda: 'return id(climate_new_temperature).state * 2 != id(climate_arc_value).state;'
+          then:
+            number.set: 
+              id: climate_arc_value
+              value: !lambda |-
+                return id(climate_new_temperature).state * 2;
+
+  - platform: homeassistant
+    id: climate_target_temperature
+    entity_id: climate.thermostat_principal
+    attribute: temperature
+
+  - platform: homeassistant
+    id: climate_min_temperature
+    entity_id: climate.thermostat_principal
+    attribute: min_temp
+
+  - platform: homeassistant
+    id: climate_max_temperature
+    entity_id: climate.thermostat_principal
+    attribute: max_temp
+
+  - platform: dht
+    pin: GPIO13
+    temperature:
+      id: climate_current_temperature
+      name: capteurs salle à manger température
+      on_value:
+        then:
+          - script.execute:
+              id: display_widget_set_values
+    humidity:
+      id: climate_current_humidity
+      name: capteurs salle à manger humidité
+      on_value:
+        then:
+          - script.execute:
+              id: display_widget_set_values
+    update_interval: 60s
+
+text_sensor:
+  - platform: template
+    id: climate_mode
+    name: Mode du thermostat
+
+  - platform: template
+    id: mode
+    name: Mode
+    on_value:
+      then:
+        - script.execute:
+            id: display_change_page_script
+
+  - id: vacuum_status
+    platform: homeassistant
+    entity_id: vacuum.plume
+    attribute: status
+    on_value:
+      then:
+        - script.execute:
+            id: vacuum_animate
+
+############
+## Button ##
+############
+button:
+  - platform: template
+    name: Mode Absent
+    on_press:
+      then:
+        - script.execute:
+            id: climate_away_button_script
+
+  - platform: template
+    name: Mode Couché
+    on_press:
+      then:
+        - script.execute:
+            id: climate_sleep_button_script
+
+  - platform: template
+    name: Mode Maison
+    on_press:
+      then:
+        - script.execute:
+            id: climate_home_button_script
+
+  - platform: template
+    name: Mode Boost
+    on_press:
+      then:
+        - script.execute:
+            id: climate_comfort_button_script
+
+  - platform: restart
+    name: "Restart"
+
+###########
+## Light ##
+###########
+light:
+  - platform: monochromatic
+    id: display_back_lighting
+    name: Retro eclairage
+    internal: true
+    output: display_back_lighting_output
+    default_transition_length: 500ms
+
+#############
+## Display ##
+#############
+display:
+  - id: display_lcd
+    platform: ili9xxx
+    model: gc9a01a
+    auto_clear_enabled: False
+    update_interval: never
+    reset_pin: GPIO8
+    cs_pin: GPIO7
+    dc_pin: GPIO4
+    dimensions: 
+      height: 240
+      width: 240
+
+################
+# Toutchscreen #
+################
+touchscreen:
+  id: touchscreen_lcd
+  platform: ft5x06
+  address: 0x38
+  on_update:
+    - then:
+      - script.execute:
+          id: display_set_countdown
+
+########
+# LVGL #
+########
+lvgl:
+  theme:
+    label:
+      text_font: roboto_15
+      text_color: white
+    btn:
+      bg_color: black
+      border_color: black
+      outline_color: black
+      shadow_color: black
+      border_width: 0
+      shadow_ofs_x: 0
+      shadow_ofs_y: 0
+      pressed:
+        bg_color: black
+        border_color: black
+        border_width: 0
+      checked:
+        bg_color: black
+        border_color: black
+        border_width: 0
+    arc:
+      border_color: black
+      outline_color: black
+      shadow_color: black
+      border_width: 0
+      shadow_ofs_x: 0
+      shadow_ofs_y: 0
+      arc_width: 10
+  displays:
+    - display_lcd
+  touchscreens:
+    - touchscreen_lcd
+  pages:
+    - id: dinning_room_lights
+      bg_color: black
+      widgets:
+        - arc:
+            id: lights_dinning_room_arc
+            align: CENTER
+            min_value: 0
+            max_value: 255
+            value: 50
+            width: 220
+            height: 220
+            adjustable: true
+            on_value:
+              if:
+                condition:
+                  lambda: 'return id(lights_dinning_room_arc_value).state != x;'
+                then:
+                  number.set: 
+                    id: lights_dinning_room_arc_value
+                    value: !lambda |-
+                      return x;
+        - btn:
+            align: CENTER
+            width: 140
+            height: 120
+            widgets:
+              - label:
+                  id: lights_dinning_room_label
+                  text_font: icon_120
+                  align: CENTER
+                  text: "\U000F1253"
+                  text_color: desactivated_button_color
+            on_press: 
+              then:
+                - lambda: |-
+                   id(lights_dinning_room_long_press_boolean).publish_state(false);
+            on_long_press:
+              then:
+                - lambda: |-
+                   id(lights_dinning_room_long_press_boolean).publish_state(true);
+            on_release:
+              then:
+                if:
+                  condition:
+                    lambda: 'return id(lights_dinning_room_long_press_boolean).state;'
+                  then:
+                    script.execute:
+                      id: lights_dinning_room_long_press_button_script
+                  else:
+                    script.execute:
+                      id: lights_dinning_room_press_button_script
+
+
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043E"
+            y: 102
+            x: -15
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 105
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 102
+            x: 15
+
+    - id: climate
+      bg_color: black
+      widgets:
+        - label:
+            id: climate_target_temperature_label
+            y: -20
+            text_font: roboto_40
+            align: CENTER
+            text: "10.1"
+            text_color: white
+
+        - label:
+            id: climate_current_temperature_label
+            y: 10
+            text_font: roboto_20
+            align: CENTER
+            text: "10.1"
+            text_color: white
+
+        - label:
+            y: 10
+            x: -30
+            text_font: icon_20
+            align: CENTER
+            text: "\U000F050F"
+            text_color: white
+
+        - label:
+            y: 10
+            x: 30
+            text_font: icon_20
+            align: CENTER
+            text: "\U000F0504"
+            text_color: white
+
+        - label:
+            id: climate_current_humidity_label
+            y: 30
+            text_font: roboto_20
+            align: CENTER
+            text: "10.1"
+            text_color: white
+
+        - label:
+            y: 30
+            x: -30
+            text_font: icon_20
+            align: CENTER
+            text: "\U000F058C"
+            text_color: white
+
+        - label:
+            y: 30
+            x: 30
+            text_font: roboto_20
+            align: CENTER
+            text: "%"
+            text_color: white
+
+        - label:
+            id: climate_fire_label
+            y: 65
+            text_font: icon_40
+            align: CENTER
+            text: "\U000F0238"
+            text_color: red
+
+        - arc:
+            id: climate_second_arc
+            align: CENTER
+            min_value: 100 # min temp
+            max_value: 220 # max temp
+            width: 220
+            height: 220
+            start_angle: 135
+            end_angle: 45
+            arc_color: gray
+            indicator:
+              arc_color: dark_orange
+            knob:
+              bg_color: dark_orange
+
+        - arc:
+            id: climate_arc
+            align: CENTER
+            min_value: 20 # min temp
+            max_value: 44 # max temp
+            adjustable: true
+            arc_width: 6
+            width: 214
+            height: 214
+            start_angle: 135
+            end_angle: 45
+            arc_color: gray
+            indicator:
+              arc_width: 6
+              arc_color: orange
+            knob:
+              bg_color: orange
+            on_value:
+              if:
+                condition:
+                  lambda: 'return id(climate_arc_value).state != x;'
+                then:
+                  number.set: 
+                    id: climate_arc_value
+                    value: !lambda |-
+                      return x;
+
+        - btn:
+            align: CENTER
+            width: 40
+            height: 40
+            x: -65
+            y: -15
+
+            widgets:
+              - label:
+                  id: climate_away_button
+                  text_font: icon_40
+                  align: CENTER
+                  text: "\U000F0717"
+                  text_color: desactivated_button_color
+
+            on_click: 
+              then:
+                - script.execute:
+                    id: climate_away_button_script
+
+
+        - btn:
+            align: CENTER
+            width: 40
+            height: 40
+            x: -30
+            y: -65
+
+            widgets:
+              - label:
+                  id: climate_sleep_button
+                  text_font: icon_40
+                  align: CENTER
+                  text: "\U000F04B2"
+                  text_color: desactivated_button_color
+
+            on_click: 
+              then:
+                - script.execute:
+                    id: climate_sleep_button_script
+
+        - btn:
+            align: CENTER
+            width: 40
+            height: 40
+            x: 30
+            y: -65
+
+            widgets:
+              - label:
+                  id: climate_home_button
+                  text_font: icon_40
+                  align: CENTER
+                  text: "\U000F02DC"
+                  text_color: desactivated_button_color
+
+            on_click: 
+              then:
+                - script.execute:
+                    id: climate_home_button_script
+
+        - btn:
+            align: CENTER
+            width: 40
+            height: 40
+            x: 65
+            y: -15
+
+            widgets:
+              - label:
+                  id: climate_comfort_button
+                  text_font: icon_40
+                  align: CENTER
+                  text: "\U000F0438"
+                  text_color: desactivated_button_color
+
+            on_click: 
+              then:
+                - script.execute:
+                    id: climate_comfort_button_script
+
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 102
+            x: -15
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043E"
+            y: 105
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 102
+            x: 15
+    
+    - id: vacuum
+      bg_color: black
+      widgets:
+        - btn:
+            align: CENTER
+            width: 200
+            height: 200
+
+            widgets:
+              - animimg:
+                  id: vacuum_icon_img
+                  src: 
+                    - vacuum_icon_160
+                    - vacuum_icon_162
+                    - vacuum_icon_164
+                    - vacuum_icon_166
+                    - vacuum_icon_168
+                    - vacuum_icon_170
+                    - vacuum_icon_168
+                    - vacuum_icon_166
+                    - vacuum_icon_164
+                    - vacuum_icon_162
+                  align: CENTER
+                  duration: 1s
+                  repeat_count: 1
+
+            on_press: 
+              then:
+                - lambda: |-
+                    id(vacuum_long_press_boolean).publish_state(false);
+            on_long_press:
+              then:
+                - lambda: |-
+                    id(vacuum_long_press_boolean).publish_state(true);
+            on_release:
+              then:
+                - if:
+                    condition:
+                      lambda: 'return id(vacuum_long_press_boolean).state;'
+                    then:
+                      script.execute:
+                        id: vacuum_long_press_button_script
+                    else:
+                      script.execute:
+                        id: vacuum_press_button_script
+
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 102
+            x: -15
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043D"
+            y: 105
+        - label:
+            align: CENTER
+            text_font: icon_10
+            text: "\U000F043E"
+            y: 102
+            x: 15
